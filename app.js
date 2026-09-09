@@ -200,9 +200,13 @@ const loginForm = document.querySelector("#loginForm");
 const loginError = document.querySelector("#loginError");
 const logoutButton = document.querySelector("#logoutButton");
 const form = document.querySelector("#proposalForm");
+const submitButton = form.querySelector('button[type="submit"]');
 const mainRates = document.querySelector("#mainRates");
 const otherRates = document.querySelector("#otherRates");
 const anticipationBlock = document.querySelector("#anticipationBlock");
+const pixRateSelect = document.querySelector("#pixRate");
+const customPixField = document.querySelector("#customPixField");
+const customPixRate = document.querySelector("#customPixRate");
 const d1PresetBar = document.querySelector("#d1PresetBar");
 const groupFillButtons = document.querySelectorAll("[data-group-fill-button]");
 const previewTitle = document.querySelector("#previewTitle");
@@ -434,6 +438,14 @@ function formatPercent(value) {
   return `${integerPart},${decimalPart}%`;
 }
 
+function syncCustomPixField() {
+  const usesCustomRate = pixRateSelect.value === "custom";
+  customPixField.classList.toggle("hidden", !usesCustomRate);
+  customPixRate.disabled = !usesCustomRate;
+  customPixRate.required = usesCustomRate;
+  pixRateSelect.setAttribute("aria-expanded", String(usesCustomRate));
+}
+
 function readRates(group) {
   const type = getProposalType();
   const labels = type === "d1" ? d1RateLabels : d30RateLabels;
@@ -445,11 +457,12 @@ function readRates(group) {
 
 function getFormData() {
   const formData = new FormData(form);
+  const selectedPixRate = formData.get("pixRate") || "";
   return {
     type: formData.get("proposalType"),
     clientName: formData.get("clientName")?.trim() || "",
     billingAverage: formData.get("billingAverage")?.trim() || "",
-    pixRate: formData.get("pixRate") || "",
+    pixRate: selectedPixRate === "custom" ? formData.get("customPixRate")?.trim() || "" : selectedPixRate,
     consultantName: formData.get("consultantName")?.trim() || "",
     consultantRole: formData.get("consultantRole")?.trim() || "",
     consultantPhone: formData.get("consultantPhone")?.trim() || "",
@@ -527,15 +540,19 @@ function drawTextInBox(page, fonts, rgb, text, box) {
   });
 }
 
-async function fetchBytes(path) {
-  if (byteCache.has(path)) return byteCache.get(path);
-
-  const response = await fetch(path);
+async function requestBytes(path, cache = "default") {
+  const response = await fetch(path, { cache });
   if (!response.ok) {
     throw new Error(`Nao foi possivel carregar ${path}.`);
   }
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function fetchBytes(path) {
+  if (byteCache.has(path)) return byteCache.get(path);
+
+  const bytes = await requestBytes(path);
   byteCache.set(path, bytes);
   return bytes;
 }
@@ -564,6 +581,15 @@ function warmResourceCache() {
   if (resourceWarmupStarted) return;
   resourceWarmupStarted = true;
   Promise.allSettled(getResourcePaths().map((path) => fetchBytes(path))).catch(() => {});
+}
+
+async function refreshResourceCache() {
+  const resources = await Promise.all(
+    getResourcePaths().map(async (path) => [path, await requestBytes(path, "reload")]),
+  );
+
+  byteCache.clear();
+  resources.forEach(([path, bytes]) => byteCache.set(path, bytes));
 }
 
 async function loadFonts(doc) {
@@ -668,6 +694,16 @@ async function generatePdf(data) {
   downloadBytes(pdfBytes, `proposta-roxinha-${safeClient}.pdf`);
 }
 
+async function generatePdfWithRetry(data) {
+  try {
+    await generatePdf(data);
+  } catch (firstError) {
+    console.warn("Primeira tentativa de gerar o PDF falhou. Recarregando os recursos.", firstError);
+    await refreshResourceCache();
+    await generatePdf(data);
+  }
+}
+
 form.addEventListener("input", (event) => {
   const target = event.target;
 
@@ -677,6 +713,7 @@ form.addEventListener("input", (event) => {
     }
 
     if (
+      target.name === "customPixRate" ||
       target.name === "autoAnticipation" ||
       target.name === "spotAnticipation" ||
       target.name.startsWith("main_") ||
@@ -691,21 +728,33 @@ form.addEventListener("input", (event) => {
 
 form.addEventListener("change", (event) => {
   if (event.target.name === "proposalType") renderRates();
+  if (event.target.name === "pixRate") syncCustomPixField();
   updatePreview();
 });
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!form.reportValidity()) return;
+  if (submitButton.disabled) return;
   if (!window.PDFLib) {
     alert("A biblioteca de PDF ainda nao carregou. Aguarde alguns segundos e tente novamente.");
     return;
   }
 
-  generatePdf(getFormData()).catch((error) => {
-    console.error(error);
-    alert("Nao foi possivel gerar o PDF.");
-  });
+  const originalLabel = submitButton.textContent;
+  submitButton.disabled = true;
+  submitButton.textContent = "Gerando PDF...";
+
+  generatePdfWithRetry(getFormData())
+    .catch((error) => {
+      console.error(error);
+      const reason = error instanceof Error ? `\n\nDetalhe: ${error.message}` : "";
+      alert(`Nao foi possivel gerar o PDF.${reason}`);
+    })
+    .finally(() => {
+      submitButton.disabled = false;
+      submitButton.textContent = originalLabel;
+    });
 });
 
 document.querySelectorAll("[data-fill-group]").forEach((button) => {
@@ -718,6 +767,7 @@ document.querySelectorAll("[data-fill-preset]").forEach((button) => {
 
 document.querySelector("#clearForm").addEventListener("click", () => {
   form.reset();
+  syncCustomPixField();
   renderRates();
 });
 
@@ -731,5 +781,6 @@ loginForm.addEventListener("submit", (event) => {
 
 logoutButton.addEventListener("click", handleLogout);
 
+syncCustomPixField();
 renderRates();
 setAuthenticatedState(hasSession());

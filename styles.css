@@ -339,6 +339,10 @@ select:focus {
   box-shadow: 0 0 0 4px rgba(116, 38, 208, 0.12);
 }
 
+.pix-custom-field {
+  margin-top: 14px;
+}
+
 .proposal-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
