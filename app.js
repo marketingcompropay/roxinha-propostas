@@ -108,6 +108,17 @@ const assets = {
   ],
 };
 
+const rentalAssets = {
+  d1: {
+    3: "assets/pages/d1/04-page-rental.jpg",
+    5: "assets/pages/d1/06-page-rental.jpg",
+  },
+  d30: {
+    3: "assets/pages/d30/04-page-rental.jpg",
+    6: "assets/pages/d30/07-page-rental.jpg",
+  },
+};
+
 const byteCache = new Map();
 let resourceWarmupStarted = false;
 
@@ -120,6 +131,7 @@ const boxes = {
   consultantPhone: { x: 162, y: 815, width: 251, height: 30, font: "montserrat700", align: "left", color: "white", maxSize: 32, minSize: 16, yOffset: -1 },
   anticipationAuto: { x: 173, y: 609, width: 452, height: 117, font: "montserrat800", align: "center", color: "purple", maxSize: 114, minSize: 34, yOffset: 3 },
   anticipationSpot: { x: 1016, y: 609, width: 451, height: 117, font: "montserrat800", align: "center", color: "white", maxSize: 114, minSize: 34, yOffset: 3 },
+  rentalFee: { x: 343, y: 529, width: 300, height: 34, font: "montserrat700", align: "left", color: "white", maxSize: 23, minSize: 16, yOffset: -1 },
 };
 
 const d1RateBoxes = {
@@ -207,6 +219,8 @@ const anticipationBlock = document.querySelector("#anticipationBlock");
 const pixRateSelect = document.querySelector("#pixRate");
 const customPixField = document.querySelector("#customPixField");
 const customPixRate = document.querySelector("#customPixRate");
+const rentalFeeField = document.querySelector("#rentalFeeField");
+const rentalFee = document.querySelector("#rentalFee");
 const d1PresetBar = document.querySelector("#d1PresetBar");
 const groupFillButtons = document.querySelectorAll("[data-group-fill-button]");
 const previewTitle = document.querySelector("#previewTitle");
@@ -219,6 +233,7 @@ const pageList = document.querySelector("#pageList");
 const previewTypeChip = document.querySelector("#previewTypeChip");
 const previewBilling = document.querySelector("#previewBilling");
 const previewPix = document.querySelector("#previewPix");
+const previewRental = document.querySelector("#previewRental");
 const previewMainRates = document.querySelector("#previewMainRates");
 const previewOtherRates = document.querySelector("#previewOtherRates");
 const previewAnticipationGroup = document.querySelector("#previewAnticipationGroup");
@@ -330,6 +345,7 @@ function updatePreview() {
   const pageCountText = isD30 ? "8" : "7";
   const billingText = data.billingAverage || "Não informado";
   const pixText = data.pixRate || "ISENTO";
+  const rentalText = data.rentalMode === "paid" ? data.rentalFee || "Não informado" : "Grátis";
   const mainSummary = data.mainRates.filter((rate) => rate.value).slice(0, 5);
   const otherSummary = data.otherRates.filter((rate) => rate.value).slice(0, 5);
 
@@ -342,6 +358,7 @@ function updatePreview() {
   previewTypeChip.textContent = isD30 ? "D+30" : "D+1";
   previewBilling.textContent = billingText;
   previewPix.textContent = pixText;
+  previewRental.textContent = rentalText;
   previewConsultant.textContent = data.consultantName || "Não informado";
   previewPhone.textContent = data.consultantPhone || "-";
   previewAuto.textContent = data.autoAnticipation || "-";
@@ -382,6 +399,7 @@ function updatePreview() {
     { label: "Proposta", value: isD30 ? "D+30" : "D+1" },
     { label: "Faturamento", value: billingText },
     { label: "PIX", value: pixText },
+    { label: "Aluguel", value: rentalText },
     { label: "Antecipação", value: isD30 ? data.autoAnticipation || "-" : "Não se aplica" },
   ];
 
@@ -438,12 +456,49 @@ function formatPercent(value) {
   return `${integerPart},${decimalPart}%`;
 }
 
+function parseCurrency(value) {
+  const cleaned = String(value || "")
+    .replace(/R\$/gi, "")
+    .replace(/\s/g, "")
+    .replace(/[^\d,.-]/g, "");
+
+  if (!cleaned) return null;
+
+  let normalized = cleaned;
+  if (cleaned.includes(",")) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (/\.\d{3}(?:\.|$)/.test(cleaned) || (cleaned.match(/\./g) || []).length > 1) {
+    normalized = cleaned.replace(/\./g, "");
+  }
+
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function formatRentalFee(value) {
+  const amount = parseCurrency(value);
+  if (amount === null) return "";
+  const formatted = amount.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `R$ ${formatted}`;
+}
+
 function syncCustomPixField() {
   const usesCustomRate = pixRateSelect.value === "custom";
   customPixField.classList.toggle("hidden", !usesCustomRate);
   customPixRate.disabled = !usesCustomRate;
   customPixRate.required = usesCustomRate;
   pixRateSelect.setAttribute("aria-expanded", String(usesCustomRate));
+}
+
+function syncRentalField() {
+  const usesPaidRental = new FormData(form).get("equipmentRental") === "paid";
+  rentalFeeField.classList.toggle("hidden", !usesPaidRental);
+  rentalFee.disabled = !usesPaidRental;
+  rentalFee.required = usesPaidRental;
+  if (!usesPaidRental) rentalFee.setCustomValidity("");
 }
 
 function readRates(group) {
@@ -458,11 +513,14 @@ function readRates(group) {
 function getFormData() {
   const formData = new FormData(form);
   const selectedPixRate = formData.get("pixRate") || "";
+  const rentalMode = formData.get("equipmentRental") || "free";
   return {
     type: formData.get("proposalType"),
     clientName: formData.get("clientName")?.trim() || "",
     billingAverage: formData.get("billingAverage")?.trim() || "",
     pixRate: selectedPixRate === "custom" ? formData.get("customPixRate")?.trim() || "" : selectedPixRate,
+    rentalMode,
+    rentalFee: rentalMode === "paid" ? formatRentalFee(formData.get("rentalFee")) : "",
     consultantName: formData.get("consultantName")?.trim() || "",
     consultantRole: formData.get("consultantRole")?.trim() || "",
     consultantPhone: formData.get("consultantPhone")?.trim() || "",
@@ -574,7 +632,19 @@ function getResourcePaths() {
     "assets/fonts/IBMPlexSans-700.ttf",
     ...assets.d1,
     ...assets.d30,
+    ...Object.values(rentalAssets.d1),
+    ...Object.values(rentalAssets.d30),
   ];
+}
+
+function getProposalImagePaths(data) {
+  const imagePaths = [...assets[data.type]];
+  if (data.rentalMode === "paid") {
+    Object.entries(rentalAssets[data.type]).forEach(([index, path]) => {
+      imagePaths[Number(index)] = path;
+    });
+  }
+  return imagePaths;
 }
 
 function warmResourceCache() {
@@ -662,7 +732,7 @@ async function generatePdf(data) {
   const doc = await PDFDocument.create();
   const fonts = await loadFonts(doc);
 
-  const imagePaths = assets[data.type];
+  const imagePaths = getProposalImagePaths(data);
   const imageBytes = await Promise.all(imagePaths.map((path) => fetchBytes(path)));
   const embeddedImages = await Promise.all(imageBytes.map((bytes, index) => embedImage(doc, imagePaths[index], bytes)));
 
@@ -681,11 +751,13 @@ async function generatePdf(data) {
 
   if (data.type === "d1") {
     drawD1Rates(pages[4], fonts, rgb, data);
+    if (data.rentalMode === "paid") drawTextInBox(pages[5], fonts, rgb, data.rentalFee, boxes.rentalFee);
     drawConsultant(pages[6], fonts, rgb, data);
   } else {
     drawD30Rates(pages[4], fonts, rgb, data);
     drawTextInBox(pages[5], fonts, rgb, data.autoAnticipation, boxes.anticipationAuto);
     drawTextInBox(pages[5], fonts, rgb, data.spotAnticipation, boxes.anticipationSpot);
+    if (data.rentalMode === "paid") drawTextInBox(pages[6], fonts, rgb, data.rentalFee, boxes.rentalFee);
     drawConsultant(pages[7], fonts, rgb, data);
   }
 
@@ -729,6 +801,13 @@ form.addEventListener("input", (event) => {
 form.addEventListener("change", (event) => {
   if (event.target.name === "proposalType") renderRates();
   if (event.target.name === "pixRate") syncCustomPixField();
+  if (event.target.name === "equipmentRental") syncRentalField();
+  updatePreview();
+});
+
+form.addEventListener("focusout", (event) => {
+  if (event.target.name !== "rentalFee") return;
+  event.target.value = formatRentalFee(event.target.value);
   updatePreview();
 });
 
@@ -768,6 +847,7 @@ document.querySelectorAll("[data-fill-preset]").forEach((button) => {
 document.querySelector("#clearForm").addEventListener("click", () => {
   form.reset();
   syncCustomPixField();
+  syncRentalField();
   renderRates();
 });
 
@@ -782,5 +862,6 @@ loginForm.addEventListener("submit", (event) => {
 logoutButton.addEventListener("click", handleLogout);
 
 syncCustomPixField();
+syncRentalField();
 renderRates();
 setAuthenticatedState(hasSession());

@@ -4,10 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Gerador de Propostas Roxinha ComproPay</title>
-    <link rel="stylesheet" href="styles.css?v=20260909-2" />
+    <link rel="stylesheet" href="styles.css?v=20260909-3" />
     <script src="assets/vendor/pdf-lib-1.17.1.min.js" defer></script>
     <script src="assets/vendor/fontkit-1.1.1.umd.min.js" defer></script>
-    <script src="app.js?v=20260909-2" defer></script>
+    <script src="app.js?v=20260909-3" defer></script>
   </head>
   <body>
     <div class="app-backdrop">
@@ -103,6 +103,40 @@
                   </span>
                 </label>
               </div>
+            </section>
+
+            <section class="surface-card">
+              <div class="section-header">
+                <span class="section-badge section-badge-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="6" y="3.5" width="12" height="17" rx="2.5" stroke="currentColor" stroke-width="1.8"/>
+                    <path d="M8.5 7.5h7M8.5 11h7M9 16.5h.01M12 16.5h.01M15 16.5h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  </svg>
+                </span>
+                <div>
+                  <h2>Aluguel do equipamento</h2>
+                </div>
+              </div>
+              <div class="proposal-choice-grid segmented" role="radiogroup" aria-label="Aluguel do equipamento">
+                <label class="proposal-option">
+                  <input type="radio" name="equipmentRental" value="free" checked required />
+                  <span>
+                    <strong>Grátis</strong>
+                    <small>Sem mensalidade pelo equipamento</small>
+                  </span>
+                </label>
+                <label class="proposal-option">
+                  <input type="radio" name="equipmentRental" value="paid" required />
+                  <span>
+                    <strong>Cobrar taxa de aluguel</strong>
+                    <small>Informe o valor mensal acordado</small>
+                  </span>
+                </label>
+              </div>
+              <label id="rentalFeeField" class="rental-fee-field hidden">
+                Valor mensal do aluguel
+                <input id="rentalFee" name="rentalFee" type="text" inputmode="decimal" placeholder="Ex.: R$ 100,00" disabled />
+              </label>
             </section>
 
             <section class="surface-card">
@@ -268,6 +302,10 @@
               <div class="detail-row">
                 <span>Taxa do PIX</span>
                 <strong id="previewPix">ISENTO</strong>
+              </div>
+              <div class="detail-row">
+                <span>Aluguel do equipamento</span>
+                <strong id="previewRental">Grátis</strong>
               </div>
 
               <div class="detail-group">
